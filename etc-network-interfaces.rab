@@ -1,19 +1,19 @@
-= タイトル
+= /etc/network/interfaces
 
 # : subtitle
 #    サブタイトル
 : author
-   Kazuhiro NISHIYAMA
+    西山和広
 # : institution
 #    所属
-# : content-source
-#    イベント名
-# : date
-#    2013/06/22
-# : allotted-time
-#    5m
-# : theme
-#    default
+: content-source
+   大統一Debian勉強会2013
+: date
+   2013/06/29
+: allotted-time
+   20m
+: theme
+   lightning-simple
 
 = 最初のスライド
 
