@@ -369,3 +369,173 @@ ADDRFAM や IFACE は iface の行の情報が設定されている環境変数�
 
 まず、単純な「iface eth0 inet dhcp」だけの設定で「up env > /var/tmp/env.txt」で保存した環境変数を例として載せておきます。
 他に pre-up や down や post-down でも環境変数を調べてみたところ、pre-up だと PHASE=pre-up になっているという違いがあり、down や post-down だと PHASE=pre-down や PHASE=post-down になっている他に MODE=stop になっているという違いがありました。PHASE には必ず pre- や post- が付いていて、/etc/network/if-*.d/ には付いていないものがあるというのは注意が必要かもしれません。
+
+= 設定の多い例
+    iface br0 inet static
+        # bridge
+        bridge_ports eth0
+        bridge_stp off
+        bridge_fd 0
+        bridge_maxwait 0
+        # static
+        address 192.168.253.29
+        netmask 255.255.255.0
+        gateway 192.168.253.1
+        # iproute
+        ip2-table 100
+        ip2-net 192.168.253.0/24
+        ip2-gateway 192.168.253.1
+        post-up /etc/network/ip2-route.sh
+        pre-down /etc/network/ip2-route.sh
+        pre-up env > /var/tmp/env-$IFACE-$PHASE.txt
+        post-down env > /var/tmp/env-$IFACE-$PHASE.txt
+        # resolvconf
+        dns-nameservers 192.168.253.1
+== Note
+のように設定している時に「/var/tmp/env-br0-pre-up.txt」は以下のようになります。
+元の設定ファイルで「\verb+-+」で書いていても「\verb+_+」で書いていても環境変数では「\verb+_+」になるという点に注意が必要かもしれません。
+= 環境変数例
+ IF_BRIDGE_FD=0
+ METHOD=static
+ MODE=start
+ LOGICAL=br0
+ IF_IP2_GATEWAY=192.168.253.1
+ PHASE=pre-up
+ IF_BRIDGE_MAXWAIT=0
+ IF_ADDRESS=192.168.253.29
+ ADDRFAM=inet
+ VERBOSITY=0
+ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ IF_IP2_NET=192.168.253.0/24
+ IF_GATEWAY=192.168.253.1
+ IF_METRIC=100
+ IF_NETMASK=255.255.255.0
+ IFACE=br0
+ IF_BRIDGE_STP=off
+ PWD=/
+ IF_IP2_TABLE=100
+ IF_BRIDGE_PORTS=eth0
+ IF_BROADCAST=+
+ IF_DNS_NAMESERVERS=192.168.253.1
+== Note
+\verb+IF_BRIDGE_+ で始まる環境変数は bridge-utils パッケージに含まれる
+/etc/network/if-post-down.d/bridge
+と
+/etc/network/if-pre-up.d/bridge
+使われます。
+
+\verb+IF_IP2_+ で始まる環境変数は次で説明する独自スクリプトで使っています。
+
+= 独自スクリプトの例
+  * インターネットへの経路が複数ある環境
+  * リクエストが来た側のゲートウェイ経由して応答を返す
+== Note
+独自スクリプトの例として以前作成したインターネットへの経路が複数ある環境での設定スクリプトを載せておきます。
+
+example では 192.168.0.2 側でも 192.168.1.2 側でも自宅サーバーを公開していて、リクエストが来た側のゲートウェイを経由して応答を返すように設定しています。
+
+いわゆるマルチホーミング
+
+= ip2-route.sh (1)
+ % cat /etc/network/ip2-route.sh
+ [ -n "$IF_IP2_NET" ] || exit 0
+ [ -n "$IF_IP2_TABLE" ] || exit 0
+ [ -n "$IF_IP2_GATEWAY" ] || exit 0
+ 
+ if [ "$VERBOSITY" -eq 1 ]; then
+         set -x
+ fi
+== Note
+まず ip2-net, ip2-table, ip2-gateway のすべてを必須設定として、抜けがある場合は何もしないようにしています。
+
+次に VERBOSITY をチェックしています。
+ここでは ifup -v eth0 のように実行された時に後続のコマンドが実際にどういうコマンドラインで実行されるのかを表示するようにして、デバッグしやすくしています。
+
+= ip2-route.sh (2)
+ case "$PHASE" in
+         *up)
+                 ip route add $IF_IP2_NET dev $IFACE src $IF_ADDRESS table $IF_IP2_TABLE
+                 ip route add default via $IF_IP2_GATEWAY table $IF_IP2_TABLE
+                 ip rule add from $IF_ADDRESS table $IF_IP2_TABLE
+         ;;
+         *down)
+                 ip rule del from $IF_ADDRESS table $IF_IP2_TABLE
+                 ip route del default via $IF_IP2_GATEWAY table $IF_IP2_TABLE
+                 ip route del $IF_IP2_NET dev $IFACE src $IF_ADDRESS table $IF_IP2_TABLE
+         ;;
+ esac
+ 
+ exit 0
+== Note
+最後に up か down かに応じて ip コマンドを実行しています。
+
+この設定ファイルを /etc/network/if-up.d/ と /etc/network/if-down.d/ の中にシンボリックリンクを作成しても良かったのですが、この例では /etc/network/ip2-route.sh に置いて、post-up と pre-down で実行するようにしています。
+スクリプトをどう設置するのかは管理しやすい方法を選べば良いと思います。
+
+スクリプトの説明はここまでです。
+次からは /etc/network/interfaces の設定の説明に戻ります。
+
+= inet アドレスファミリ
+IPv4 のネットワーク設定
+= loopback メソッド
+  iface lo inet loopback
+
+ # The loopback network interface
+ auto lo
+ iface lo inet loopback
+   pre-up /sbin/iptables-restore < /etc/network/iptables.txt
+== Note
+iptables の設定に iptables-restore を使っているのなら、下の例のように lo の pre-up に設定しておけば他のインターフェイスが up される前に設定できていいかもしません
+
+= static メソッド
+  * 必須オプション
+    * address
+    * netmask
+  * 普通は省略するオプション
+    * broadcast
+    * network
+  * 設定することが多いオプション
+    * gateway
+== Note
+address と netmask は必須です。
+
+broadcast と network は address と netmask から自動設定可能なので、わざわざ書いて間違える可能性を増やすよりも省略しておく方がおすすめだと思います。
+
+gateway も設定することが多いです。
+= manual メソッド
+  * up や down などで全部自前で設定する時
+  * 「/etc/network/if-*.d/」以下のスクリプトで設定する時
+  * NetworkManaer の余計な処理を止めたい時
+== Note
+up や down などで全部自前で設定するときや 「/etc/network/if-*.d/」以下のスクリプトで設定する時などに使います。
+
+bonding の slave 用 NIC に NetworkManager などが余計なことをしないように「iface eth1 inet manual」だけ書いておくという使い方も可能です。
+
+= dhcp メソッド
+  * dhclient などで自動設定
+
+== Note
+dhclient などで dhcp クライアントとしてネットワークを設定します。
+
+= inet6 アドレスファミリ
+IPv6 のネットワーク設定
+== Note
+IPv6 のネットワーク設定です。
+
+端末として接続するだけなら自動設定されることが多いので、わざわざ書くことは少ないかもしれません。
+ルーターやサーバーなどで固定 IP アドレスを付けたり、トンネルで接続する場合に書くことになります。
+接続方法によって設定内容が変わってくるので、詳細は省略します。
+
+= 設定書き換え時の注意
+安全な書き換え手順
+  (1) ifdown
+  (2) /etc/network/interfaces を書き換え
+  (3) ifup
+== Note
+ネットワーク接続中に /etc/network/interfaces を書き換えるのはあまりお勧めしません。
+
+ifdown のときにも /etc/network/interfaces を見て何をするかが決まっているので、dhcp を static に書き換えてから /etc/init.d/networking restart をしてしまうと、dhcp クライアントのプロセスが残ってしまって、いつの間にかIPアドレスが変わって悩む、という現象が起きることがあるので注意が必要です。
+たとえば他にも up で route add されていることを前提にして down に route del を書いていると、手動で up に書いた処理を実行しないと down の処理でエラーになるというような問題があります。
+
+安全な方法としては ifdown で停止した後で /etc/network/interfaces を書き換えて、 ifup するという手順になります。
+
