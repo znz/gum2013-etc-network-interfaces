@@ -52,3 +52,320 @@ Debian 系では /etc/network/interfaces がネットワークの設定ファイ
 
 == Note
 resolvconf や wireless-tools や wpasupplicant などは後述する /etc/network/if-*.d/ の仕組みを使っているので、 /etc/network/interfaces ファイルを直接参照することはありません。
+
+= interfaces ファイルの構造
+ # lo の auto stanza と iface stanza
+ auto lo
+ iface lo inet loopback
+ 
+ # eth0 の allow-hotplug stanza と iface stanza
+ allow-hotplug eth0
+ iface eth0 inet dhcp
+ 
+ # eth1 の allow-hotplug stanza と iface stanza
+ allow-hotplug eth1
+ iface eth1 inet static
+     address 192.168.1.1
+     netmask 255.255.255.0
+
+== Note
+interfaces ファイルは stanza (スタンザ) と呼ばれる固まりを並べる構造になっています。
+
+例えば以下のような interfaces ファイルなら 6 個の stanza を含んでいます。
+
+
+最初の2個の stanza は lo という 127.0.0.1 や ::1 に対応するループバックインターフェイスの設定で、ここをいじることは普通はないと思います。
+
+次の2個の stanza は eth0 という最初のネットワークインターフェイスは DHCP で自動で設定を取得しています。
+
+最後の2個の stanza は eth1 というネットワークインターフェイスは 192.168.1.1 という IPv4 アドレスを設定しています。
+address や netmask の行も iface stanza に含まれます。
+
+= stanza (スタンザ) とは?
+
+  * iface
+  * mapping
+  * auto
+  * source (wheezy 以降)
+  * allow-hotplug
+
+== Note
+stanza は "iface", "mapping", "auto", "source"\footnote{source stanza が使えるのは wheezy 以降のみです。} や "allow-"\footnote{allow-hotplug と allow-auto があるようです。}の行が stanza の始まりです。
+stanza は 1 行だけのこともあれば複数行になっていることもあります。
+
+= stanza の例 (1)
+
+     auto lo
+    iface lo inet loopback
+   allow-hotplug eth0
+  iface eth0 inet dhcp
+
+== Note
+以下の例ではそれぞれ 1 行ずつの stanza が 5 個あります。
+
+= stanza の例 (2)
+
+  iface eth1 inet static
+      address 192.168.1.1
+      netmask 255.255.255.0
+ iface eth2 inet static
+ address 192.168.2.1
+ netmask 255.255.255.0
+
+== Note
+次の例では 3 行で 1 個の stanza になっています。
+2 行目以降はインデントされていることもありますが、インデントはあってもなくてもかまいません。
+
+= コメント
+  * (('#')) から始まる行
+  * 行の途中や行末に (('#')) があっても設定値の一部になるだけ
+== Note
+(('#')) から始まる行はコメントです。
+行の途中や行末に (('#')) があっても設定値の一部になるだけでコメントにはなりません。
+
+= Agenda
+
+  * /etc/network/interfaces とは?
+  * interfaces ファイルの構造
+  * ((*stanza の種類*))
+
+= auto stanza
+   * 「(('ifup -a'))」で up するインターフェイス
+
+  # 1行にまとめる例
+  auto eth0 eth1
+
+ # 複数の stanza に分割する例
+ auto eth0
+ auto eth1
+
+== Note
+auto stanza は ifup -a のコマンド実行時に up するインターフェイスの設定です。
+複数設定したい場合は、1 行に複数並べてもいいし、複数回 auto stanza を書いても構いません。
+
+= allow-hotplug stanza
+NIC が認識されたタイミングで up するインターフェイス
+  * 「(('ifup --allow=hotplug  eth0 eth1'))」
+  * udev の中で「(('SUBSYSTEM=="net", RUN+="net.agent"'))」という設定
+  * 「(('/lib/udev/net.agent'))」が「(('ifup --allow=hotplug'))」を実行
+
+== Note
+allow-hotplug stanza は「\verb+ifup --allow=hotplug  eth0 eth1+」のように実行されたときに up するインターフェイスの設定です。\footnote{interfaces の man page では "allow-" stanza と説明されていて、 allow-auto は auto と同じ意味だと書かれています。他の "allow-" stanza は見たことがないので、ここでは代表して allow-hotplug stanza として説明しています。}
+
+udev で NIC などが認識されたタイミングで up するインターフェイスを設定します。auto だとデバイスの認識のタイミングの問題で up に失敗することがあるので、最近は allow-hotplug eth0 のようになっていることが多いようです。
+
+etch や lenny では \verb+/etc/udev/rules.d/+ の中に、
+squeeze や wheezy では \verb+/lib/udev/rules.d/+ の中に
+
+\begin{commandline}
+  SUBSYSTEM=="net", RUN+="net.agent"
+\end{commandline}
+
+という設定があり、\verb+/lib/udev/net.agent+ 経由で「\verb+ifup --allow=hotplug+」が実行されています。
+
+= mapping stanza
+ * 動的に設定を切り替え
+ * /usr/share/doc/ifupdown/examples/ に例
+   * PC カードの MAC アドレス (get-mac-address.sh)
+   * 特定の IP アドレスに ping が通るか (ping-places.sh)
+== Note
+/usr/share/doc/ifupdown/examples/ 以下に、ノート PC で差した PC カードの MAC アドレスによって設定を変えたり (get-mac-address.sh)、特定の IP アドレスに ping が通るかどうかによって設定を変えたり (ping-places.sh) するサンプルファイルがあります。
+
+= source stanza
+  * 別のファイルを読み込む
+  * ただし wheezy 以降
+ source /etc/network/interfaces.d/*
+
+== Note
+wheezy 以降の ifupdown パッケージでは source stanza というものが使えます。
+interfaces ファイルの中で別のファイルを読み込む (include する) ものです。
+
+という設定を書けば /etc/network/interfaces.d/lo や /etc/network/interfaces.d/eth0 などに設定を分割して取り込むということも出来ます。
+
+ただし NetworkManager などの別のツールやスクリプトで /etc/network/interfaces を直接見ている場合に問題が起きる可能性があるという議論\footnote{https://lists.debian.org/debian-devel/2013/01/msg00157.html}があるようです。
+
+= iface stanza
+   * iface 名前 アドレスファミリ メソッド
+  iface eth0 inet dhcp
+ iface eth1 inet static
+     address 192.168.1.1
+     netmask 255.255.255.0
+
+== Note
+iface stanza では、IP アドレスなどのネットワーク設定を記述します。
+「iface 名前 アドレスファミリ メソッド」という行で始まります。
+
+iface stanza の最初の引数には eth0 などのような物理インターフェイス名を記述します。
+物理インターフェイス名の代わりに、論理名で home と記述して「ifup ath0=home」のように使うこともできます。
+\footnote{以前、/etc/network/run/ifstate (wheezy では /run/network/ifstate) に「lo=lo」とか「eth0=eth0」のようにあって、何の意味があるんだろうと思っていたのですが、「ifup ath0=home」とするとifstateに「ath0=home」と書き込まれていて、こういう場合に「=」の左右が違うことがあるということを知りました。}
+
+その他の設定については後述します。
+= iface オプション
+  * iface stanza の 2 行目以降
+  * アドレスファミリごとのオプション
+  * 共通オプション 4種類
+
+== Note
+アドレスファミリなどに関係なく共通で使えるオプションとして、以下の4種類があります。
+
+= 共通オプション (up)
+  * pre-up
+    * ネットワークを up する前
+    * 無線 LAN 関係の設定など
+  * up (post-up でも同じ)
+    * ネットワークを up した後
+    * ネットワークの追加設定
+    * デーモンの再起動
+    * VPN の接続
+    * manual メソッドで up 処理を書くなど
+
+== Note
+\item[pre-up] ネットワークを up する前に必要な無線 LAN 関係の設定などに使われます。
+
+\item[up (post-up でも同じ)] ネットワークを up した後に追加で設定するのに使われたりインターフェイスの増減が影響するデーモンの再起動をしたり VPN の接続をしたり manual メソッドで up 処理を書くのに使われたりします。
+
+= 共通オプション (down)
+  * down (pre-down でも同じ)
+    * VPN の切断
+    * DNS サーバーの設定を外す
+  * post-down
+    * 無線 LAN 関係の停止処理など
+
+== Note
+\item[down (pre-down でも同じ)] VPN の切断をしたり切断対象のネットワークの DNS サーバーの設定を外したりします。
+
+\item[post-down] 無線 LAN 関係の停止処理などに使われます。
+
+= 実行順序
+ifup
+  (1) pre-up
+  (2) ifup の内部処理
+  (3) up (post-up)
+ifdown
+  (1) down (pre-down)
+  (2) ifdown の内部処理
+  (3) post-down
+
+== Note
+\item[ifup] pre-up → ifup の内部処理\footnote{後述の static メソッドや dhcp メソッドなどに対応する処理です。 manual メソッドなら何もしません。} → up (post-up)
+\item[ifdown] down (pre-down) → ifdown の内部処理 → post-down
+
+= /etc/network/if-*.d/
+オプションと同じタイミングで実行 (run-parts)
+  * /etc/network/if-pre-up.d/
+  * /etc/network/if-up.d/
+  * /etc/network/if-down.d/
+  * /etc/network/if-post-down.d/
+環境変数で連携
+
+== Note
+上記の設定と同じタイミングで \verb+/etc/network/if-*.d/+ に置かれたスクリプトも実行されます。
+
+\footnote{run-parts で実行されるため /etc/cron*ly 以下などと同じくファイル名に「.」などが含まれていると実行されません。}
+
+スクリプトには iface stanza の情報として環境変数 IFACE, LOGICAL, ADDRFAM, METHOD, MODE, PHASE, VERBOSITY が渡されます。
+他のオプションは「\verb+IF_+」で始まる環境変数で渡されます。
+
+= パッケージで導入されるオプション例
+  # RT
+
+  パッケージ, オプション
+
+  wireless-tools, wireless-*
+  wpasupplicant , wpa-*
+  resolvconf    , dns-*
+  ifenslave-2.6 , slaves
+
+== Note
+wireless-tools パッケージを入れたら「wireless-」で始まるオプションが使えたり、wpasupplicant パッケージを入れたら「wpa-」で始まるオプションを使えたり、resolvconf パッケージを入れたら「dns-」で始まるオプションが使えたり、ifenslave-2.6 パッケージを入れたら「slaves」オプションが使えたりするのは、この「\verb+IF_+」で始まる環境変数を「/etc/network/if-*.d/」以下のスクリプトで使っているからです。
+
+以下ではパッケージで導入されるスクリプトと独自スクリプトの例について説明します。
+
+= パッケージで導入されるスクリプトの例
+resolvconf パッケージ
+  * /etc/network/if-up.d/000resolvconf
+  * /etc/network/if-down.d/resolvconf
+
+== Note
+パッケージで導入されるスクリプトの例として、resolvconf パッケージを取り上げます。
+resolvconf パッケージは /etc/resolv.conf を更新するための仕組みを提供しています。
+ここでは ifup、ifdown に関係する部分だけ説明します。
+
+resolvconf パッケージをインストールすると
+\begin{itemize}
+\item /etc/network/if-up.d/000resolvconf
+\item /etc/network/if-down.d/resolvconf
+\end{itemize}
+というファイルが出来ます。
+
+= 000resolvconf (1)
+ % egrep '^[^#]' /etc/network/if-up.d/000resolvconf | cat -n
+      1  [ -x /sbin/resolvconf ] || exit 0
+      2  case "$ADDRFAM" in
+      3    inet|inet6) : ;;
+      4    *) exit 0 ;;
+      5  esac
+      6  R=""
+      7  if [ "$IF_DNS_DOMAIN" ] ; then
+      8          R="${R}domain $IF_DNS_DOMAIN
+      9  "
+     10  fi
+     11  if [ "$IF_DNS_SEARCH" ] ; then
+     12          R="${R}search $IF_DNS_SEARCH
+     13  "
+     14  fi
+
+== Note
+000resolvconf の内容をコメントや空行を除外して引用します。
+
+まず1行目には /sbin/resolvconf の存在チェックがあります。
+これはパッケージが削除されて設定ファイルだけ残っている時にエラーにならないようにするための処理です。
+
+次に2から5行目では環境変数 ADDRFAM をチェックして IPv4 と IPv6 のときだけ続きの処理を実行します。
+ADDRFAM や IFACE は iface の行の情報が設定されている環境変数です。
+
+= 000resolvconf (2)
+    15  if [ "$IF_DNS_SORTLIST" ] ; then
+    16          R="${R}sortlist $IF_DNS_SORTLIST
+    17  "
+    18  fi
+    19  for NS in $IF_DNS_NAMESERVERS ; do
+    20          R="${R}nameserver $NS
+    21  "
+    22  done
+    23  echo -n "$R" | /sbin/resolvconf -a "${IFACE}.${ADDRFAM}"
+== Note
+続きの設定はほぼ同じような処理の繰り返しなので、一番良く使われると思われる dns-nameservers について説明します。
+
+/etc/network/interfaces ファイルの iface stanza で「dns-nameservers 192.168.0.1」や「dns-nameservers 192.168.0.1 192.168.0.2」のように設定します。
+
+その設定が19行目で \verb+IF_DNS_NAMESERVERS+ という環境変数で参照されています。
+他の設定も含めて resolvconf パッケージの独自設定には \verb+dns-+ を付けるようになっています。
+
+設定を書く時に \verb+dns-+ を付け忘れて「nameservers 192.168.0.1」のように書いてしまうと resolvconf には反映されずに悩むことになるので注意が必要です。
+
+このように環境変数で連携しているため、無効な設定があっても他で使っているかもしれないということで、設定ミスの自動チェックは難しいようです。
+
+= 環境変数の例
+  * 「iface eth0 inet dhcp」だけの設定
+  * 「up env > /var/tmp/env.txt」で保存した環境変数の例
+
+ METHOD=dhcp
+ MODE=start    (or stop)
+ LOGICAL=eth0
+ PHASE=post-up (or pre-up, pre-down, post-down)
+ ADDRFAM=inet
+ VERBOSITY=0   (ifup -v なら 1)
+ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ IFACE=eth0
+ PWD=/
+
+== Note
+独自スクリプトの例に入る前にスクリプトのなかで使える環境変数の例を紹介しておきます。
+
+独自スクリプトを作成する時には、まず「up env > /var/tmp/env.txt」などで使える環境変数を確認するのがおすすめです。
+デバッグ中にも意図した通りの環境変数が設定されているかどうかを確認することをおすすめします。
+「ifup -v eth0」のように「-v」付きで実行された場合は VERBOSITY が 1 になるので、その場合だけデバッグ用の出力を増やすようにするのもおすすめです。
+
+まず、単純な「iface eth0 inet dhcp」だけの設定で「up env > /var/tmp/env.txt」で保存した環境変数を例として載せておきます。
+他に pre-up や down や post-down でも環境変数を調べてみたところ、pre-up だと PHASE=pre-up になっているという違いがあり、down や post-down だと PHASE=pre-down や PHASE=post-down になっている他に MODE=stop になっているという違いがありました。PHASE には必ず pre- や post- が付いていて、/etc/network/if-*.d/ には付いていないものがあるというのは注意が必要かもしれません。
