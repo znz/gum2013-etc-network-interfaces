@@ -1,4 +1,4 @@
-= /etc/network/interfaces
+= /etc/network/interfaces について
 
 # : subtitle
 #    サブタイトル
@@ -15,14 +15,40 @@
 : theme
    lightning-simple
 
-= 最初のスライド
+= /etc/network/interfaces とは?
+ネットワークの設定ファイル
 
-  * 項目1
-  * 項目2
-  * 項目3
+  * Debian, Ubuntu など
+    * /etc/network/interfaces
+  * Fedora, CentOS など
+    * /etc/sysconfig/network や
+    * /etc/sysconfig/network-scripts/ifcfg-eth0
+    * など
 
-= 二番目のスライド
+== Note
 
-  # image
-  # src = https://raw.github.com/rabbit-shocker/rabbit/master/sample/lavie.png
-  # relative_height = 100
+Linux ではディストリビューションごとにネットワーク設定の仕組みが異なっています。
+Debian 系では /etc/network/interfaces がネットワークの設定ファイルです。
+これは Red Hat Enterprise Linux や CentOS での /etc/sysconfig/network や /etc/sysconfig/network-scripts/ifcfg-eth0 などの設定ファイルに相当します。
+
+= 何から参照されるか?
+  * ifupdown パッケージ
+    * ifup (インターフェイス設定コマンド)
+    * ifdown (設定解除コマンド)
+  * NetworkManager
+  * など
+
+== Note
+
+/etc/network/interfaces は主に ifupdown パッケージで提供される ifup (ネットワークインターフェイス設定コマンド) と ifdown (設定解除コマンド) で使われます。
+他にも NetworkManager や guessnet などのツールやスクリプトから参照されることもあるようです。
+
+= 何から参照されない?
+  * /etc/network/if-*.d/ で連携するもの
+    * resolvconf
+    * wireless-tools
+    * wpasupplicant
+    * など
+
+== Note
+resolvconf や wireless-tools や wpasupplicant などは後述する /etc/network/if-*.d/ の仕組みを使っているので、 /etc/network/interfaces ファイルを直接参照することはありません。
