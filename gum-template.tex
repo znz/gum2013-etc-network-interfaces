@@ -1,0 +1,527 @@
+% -*- coding: iso-2022-jp; mode: japanese-latex -*-
+% Tokyo Debian Meeting resources
+% Copyright (C) 2011 Junichi Uekawa
+% Copyright (C) 2011 Nobuhiro Iwamatsu
+% Copyright (C) 2013 Youhei SASAKI
+%
+% This program is free software; you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation; either version 2 of the License, or
+% (at your option) any later version.
+%
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+%
+% You should have received a copy of the GNU General Public License
+% along with this program; if not, write to the Free Software
+% Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
+%
+%  preview (shell-command (concat "evince " (replace-regexp-in-string "tex$" "pdf"(buffer-file-name)) "&"))
+% 画像ファイルを処理するためにはebbを利用してboundingboxを作成。
+% (shell-command "cd images; ebb *.png")
+%
+%% ここからヘッダ開始。%
+\documentclass[a4paper]{jsarticle}
+\usepackage{gum2013}
+
+\begin{document}
+
+\dancersection{/etc/network/interfaces について}{西山和広}
+\label{sec:etc-network-interfaces}
+
+Debian でネットワークの設定を行うには /etc/network/interfaces ファイルに書く方法や NetworkManager を使う方法などがあります。
+サーバー系では主に /etc/network/interfaces が使われていて、デスクトップ環境や無線 LAN のついたノート PC などでは NetworkManager が使われることが多いようです。
+
+ここでは /etc/network/interfaces について説明します。
+
+\subsection{/etc/network/interfaces とは?}
+
+Linux ではディストリビューションごとにネットワーク設定の仕組みが異なっています。
+Debian 系では /etc/network/interfaces がネットワークの設定ファイルです。
+これは Red Hat Enterprise Linux や CentOS での /etc/sysconfig/network や /etc/sysconfig/network-scripts/ifcfg-eth0 などの設定ファイルに相当します。
+
+/etc/network/interfaces は主に ifupdown パッケージで提供される ifup (ネットワークインターフェイス設定コマンド) と ifdown (設定解除コマンド) で使われます。
+他にも NetworkManager や guessnet などのツールやスクリプトから参照されることもあるようです。
+\footnote{resolvconf や wireless-tools や wpasupplicant などは後述する /etc/network/if-*.d/ の仕組みを使っているので、 /etc/network/interfaces ファイルを直接参照することはありません。}
+
+\subsection{interfaces ファイルの構造}
+
+interfaces ファイルは stanza (スタンザ) と呼ばれる固まりを並べる構造になっています。
+
+例えば以下のような interfaces ファイルなら 6 個の stanza を含んでいます。
+
+\begin{commandline}
+# lo の auto stanza と iface stanza
+auto lo
+iface lo inet loopback
+
+# eth0 の allow-hotplug stanza と iface stanza
+allow-hotplug eth0
+iface eth0 inet dhcp
+
+# eth1 の allow-hotplug stanza と iface stanza
+allow-hotplug eth1
+iface eth1 inet static
+    address 192.168.1.1
+    netmask 255.255.255.0
+\end{commandline}
+
+最初の2個の stanza は lo という 127.0.0.1 や ::1 に対応するループバックインターフェイスの設定で、ここをいじることは普通はないと思います。
+
+次の2個の stanza は eth0 という最初のネットワークインターフェイスは DHCP で自動で設定を取得しています。
+
+最後の2個の stanza は eth1 というネットワークインターフェイスは 192.168.1.1 という IPv4 アドレスを設定しています。
+address や netmask の行も iface stanza に含まれます。
+
+\subsubsection{stanza とは}
+
+stanza は "iface", "mapping", "auto", "source"\footnote{source stanza が使えるのは wheezy 以降のみです。} や "allow-"\footnote{allow-hotplug と allow-auto があるようです。}の行が stanza の始まりです。
+stanza は 1 行だけのこともあれば複数行になっていることもあります。
+
+以下の例ではそれぞれ 1 行ずつの stanza が 5 個あります。
+
+\begin{commandline}
+auto lo
+iface lo inet loopback
+allow-hotplug eth0
+iface eth0 inet dhcp
+allow-hotplug eth1
+\end{commandline}
+
+次の例では 3 行で 1 個の stanza になっています。
+2 行目以降はインデントされていることもありますが、インデントはあってもなくてもかまいません。
+
+\begin{commandline}
+iface eth1 inet static
+    address 192.168.1.1
+    netmask 255.255.255.0
+\end{commandline}
+
+\subsubsection{コメント}
+
+「\verb+#+」から始まる行はコメントです。
+行の途中や行末に「\verb+#+」があっても設定値の一部になるだけでコメントにはなりません。
+
+\subsection{stanza の種類}
+
+\subsubsection{auto stanza}
+
+auto stanza は \verb+ifup -a+ のコマンド実行時に up するインターフェイスの設定です。
+複数設定したい場合は、1 行に複数並べてもいいし、複数回 auto stanza を書いても構いません。
+
+\begin{commandline}
+# 1行にまとめる例
+auto eth0 eth1
+\end{commandline}
+
+\begin{commandline}
+# 複数の stanza に分割する例
+auto eth0
+auto eth1
+\end{commandline}
+
+\subsubsection{allow-hotplug stanza}
+
+allow-hotplug stanza は「\verb+ifup --allow=hotplug  eth0 eth1+」のように実行されたときに up するインターフェイスの設定です。\footnote{interfaces の man page では "allow-" stanza と説明されていて、 allow-auto は auto と同じ意味だと書かれています。他の "allow-" stanza は見たことがないので、ここでは代表して allow-hotplug stanza として説明しています。}
+
+udev で NIC などが認識されたタイミングで up するインターフェイスを設定します。auto だとデバイスの認識のタイミングの問題で up に失敗することがあるので、最近は allow-hotplug eth0 のようになっていることが多いようです。
+
+etch や lenny では \verb+/etc/udev/rules.d/+ の中に、
+squeeze や wheezy では \verb+/lib/udev/rules.d/+ の中に
+
+\begin{commandline}
+  SUBSYSTEM=="net", RUN+="net.agent"
+\end{commandline}
+
+という設定があり、\verb+/lib/udev/net.agent+ 経由で「\verb+ifup --allow=hotplug+」が実行されています。
+
+\subsubsection{mapping stanza}
+mapping stanza はプログラムの実行結果によって設定を切り替えたいときに使います。
+
+\verb+/usr/share/doc/ifupdown/examples/+ 以下に、ノート PC で差した PC カードの MAC アドレスによって設定を変えたり (get-mac-address.sh)、特定の IP アドレスに ping が通るかどうかによって設定を変えたり (ping-places.sh) するサンプルファイルがあります。
+
+\subsubsection{source stanza}
+
+wheezy 以降の ifupdown パッケージでは source stanza というものが使えます。
+interfaces ファイルの中で別のファイルを読み込む (include する) ものです。
+
+例えば
+
+\begin{commandline}
+source /etc/network/interfaces.d/*
+\end{commandline}
+
+という設定を書けば /etc/network/interfaces.d/lo や /etc/network/interfaces.d/eth0 などに設定を分割して取り込むということも出来ます。
+
+ただし NetworkManager などの別のツールやスクリプトで /etc/network/interfaces を直接見ている場合に問題が起きる可能性があるという議論\footnote{https://lists.debian.org/debian-devel/2013/01/msg00157.html}があるようです。
+
+\subsubsection{iface stanza}
+
+iface stanza では、IP アドレスなどのネットワーク設定を記述します。
+「iface 名前 アドレスファミリ メソッド」という行で始まります。
+
+iface stanza の最初の引数には eth0 などのような物理インターフェイス名を記述します。
+物理インターフェイス名の代わりに、論理名で home と記述して「ifup ath0=home」のように使うこともできます。
+\footnote{以前、/etc/network/run/ifstate (wheezy では /run/network/ifstate) に「lo=lo」とか「eth0=eth0」のようにあって、何の意味があるんだろうと思っていたのですが、「ifup ath0=home」とするとifstateに「ath0=home」と書き込まれていて、こういう場合に「=」の左右が違うことがあるということを知りました。}
+
+その他の設定については後述します。
+
+\subsection{iface オプション}
+アドレスファミリなどに関係なく共通で使えるオプションとして、以下の4種類があります。
+
+
+\begin{description}
+\item[pre-up] ネットワークを up する前に必要な無線 LAN 関係の設定などに使われます。
+\item[up (post-up でも同じ)] ネットワークを up した後に追加で設定するのに使われたりインターフェイスの増減が影響するデーモンの再起動をしたり VPN の接続をしたり manual メソッドで up 処理を書くのに使われたりします。
+\item[down (pre-down でも同じ)] VPN の切断をしたり切断対象のネットワークの DNS サーバーの設定を外したりします。
+\item[post-down] 無線 LAN 関係の停止処理などに使われます。
+\end{description}
+
+実行の順序は、それぞれ以下のようになります。
+
+\begin{description}
+\item[ifup] pre-up → ifup の内部処理\footnote{後述の static メソッドや dhcp メソッドなどに対応する処理です。 manual メソッドなら何もしません。} → up (post-up)
+\item[ifdown] down (pre-down) → ifdown の内部処理 → post-down
+\end{description}
+
+上記の設定と同じタイミングで \verb+/etc/network/if-*.d/+ に置かれたスクリプトも実行されます。
+\footnote{run-parts で実行されるため /etc/cron*ly 以下などと同じくファイル名に「.」などが含まれていると実行されません。}
+
+スクリプトには iface stanza の情報として環境変数 IFACE, LOGICAL, ADDRFAM, METHOD, MODE, PHASE, VERBOSITY が渡されます。
+他のオプションは「\verb+IF_+」で始まる環境変数で渡されます。
+
+wireless-tools パッケージを入れたら「wireless-」で始まるオプションが使えたり、wpasupplicant パッケージを入れたら「wpa-」で始まるオプションを使えたり、resolvconf パッケージを入れたら「dns-」で始まるオプションが使えたり、ifenslave-2.6 パッケージを入れたら「slaves」オプションが使えたりするのは、この「\verb+IF_+」で始まる環境変数を「/etc/network/if-*.d/」以下のスクリプトで使っているからです。
+
+以下ではパッケージで導入されるスクリプトと独自スクリプトの例について説明します。
+
+\subsubsection{パッケージで導入されるスクリプトの例}
+パッケージで導入されるスクリプトの例として、resolvconf パッケージを取り上げます。
+resolvconf パッケージは /etc/resolv.conf を更新するための仕組みを提供しています。
+ここでは ifup、ifdown に関係する部分だけ説明します。
+
+resolvconf パッケージをインストールすると
+\begin{itemize}
+\item /etc/network/if-up.d/000resolvconf
+\item /etc/network/if-down.d/resolvconf
+\end{itemize}
+というファイルが出来ます。
+
+000resolvconf の内容をコメントや空行を除外して引用します。
+
+\begin{commandline}
+% egrep '^[^#]' /etc/network/if-up.d/000resolvconf | cat -n
+     1  [ -x /sbin/resolvconf ] || exit 0
+     2  case "$ADDRFAM" in
+     3    inet|inet6) : ;;
+     4    *) exit 0 ;;
+     5  esac
+     6  R=""
+     7  if [ "$IF_DNS_DOMAIN" ] ; then
+     8          R="${R}domain $IF_DNS_DOMAIN
+     9  "
+    10  fi
+    11  if [ "$IF_DNS_SEARCH" ] ; then
+    12          R="${R}search $IF_DNS_SEARCH
+    13  "
+    14  fi
+    15  if [ "$IF_DNS_SORTLIST" ] ; then
+    16          R="${R}sortlist $IF_DNS_SORTLIST
+    17  "
+    18  fi
+    19  for NS in $IF_DNS_NAMESERVERS ; do
+    20          R="${R}nameserver $NS
+    21  "
+    22  done
+    23  echo -n "$R" | /sbin/resolvconf -a "${IFACE}.${ADDRFAM}"
+\end{commandline}
+
+まず1行目には /sbin/resolvconf の存在チェックがあります。
+これはパッケージが削除されて設定ファイルだけ残っている時にエラーにならないようにするための処理です。
+
+次に2から5行目では環境変数 ADDRFAM をチェックして IPv4 と IPv6 のときだけ続きの処理を実行します。
+ADDRFAM や IFACE は iface の行の情報が設定されている環境変数です。
+
+続きの設定はほぼ同じような処理の繰り返しなので、一番良く使われると思われる dns-nameservers について説明します。
+
+/etc/network/interfaces ファイルの iface stanza で「dns-nameservers 192.168.0.1」や「dns-nameservers 192.168.0.1 192.168.0.2」のように設定します。
+
+その設定が19行目で \verb+IF_DNS_NAMESERVERS+ という環境変数で参照されています。
+他の設定も含めて resolvconf パッケージの独自設定には \verb+dns-+ を付けるようになっています。
+
+設定を書く時に \verb+dns-+ を付け忘れて「nameservers 192.168.0.1」のように書いてしまうと resolvconf には反映されずに悩むことになるので注意が必要です。
+
+このように環境変数で連携しているため、無効な設定があっても他で使っているかもしれないということで、設定ミスの自動チェックは難しいようです。
+
+\subsubsection{環境変数の例}
+独自スクリプトの例に入る前にスクリプトのなかで使える環境変数の例を紹介しておきます。
+
+独自スクリプトを作成する時には、まず「up env $>$ /var/tmp/env.txt」などで使える環境変数を確認するのがおすすめです。
+デバッグ中にも意図した通りの環境変数が設定されているかどうかを確認することをおすすめします。
+「ifup -v eth0」のように「-v」付きで実行された場合は VERBOSITY が 1 になるので、その場合だけデバッグ用の出力を増やすようにするのもおすすめです。
+
+まず、単純な「iface eth0 inet dhcp」だけの設定で「up env $>$ /var/tmp/env.txt」で保存した環境変数を例として載せておきます。
+他に pre-up や down や post-down でも環境変数を調べてみたところ、pre-up だと PHASE=pre-up になっているという違いがあり、down や post-down だと PHASE=pre-down や PHASE=post-down になっている他に MODE=stop になっているという違いがありました。PHASE には必ず pre- や post- が付いていて、/etc/network/if-*.d/ には付いていないものがあるというのは注意が必要かもしれません。
+
+\begin{commandline}
+METHOD=dhcp
+MODE=start
+LOGICAL=eth0
+PHASE=post-up
+ADDRFAM=inet
+VERBOSITY=0
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+IFACE=eth0
+PWD=/
+\end{commandline}
+
+
+そして、もっと複雑な例としてブリッジ設定や後述する独自スクリプトの設定などが入っている時の例も載せておきます。
+
+/etc/network/interfaces で
+
+\begin{commandline}
+iface br0 inet static
+        # bridge
+        bridge_ports eth0
+        bridge_stp off
+        bridge_fd 0
+        bridge_maxwait 0
+        # static
+        address 192.168.253.29
+        netmask 255.255.255.0
+        gateway 192.168.253.1
+        # iproute
+        ip2-table 100
+        ip2-net 192.168.253.0/24
+        ip2-gateway 192.168.253.1
+        post-up /etc/network/ip2-route.sh
+        pre-down /etc/network/ip2-route.sh
+        pre-up env > /var/tmp/env-$IFACE-$PHASE.txt
+        post-down env > /var/tmp/env-$IFACE-$PHASE.txt
+        # resolvconf
+        dns-nameservers 192.168.253.1
+\end{commandline}
+
+のように設定している時に「/var/tmp/env-br0-pre-up.txt」は以下のようになります。
+元の設定ファイルで「\verb+-+」で書いていても「\verb+_+」で書いていても環境変数では「\verb+_+」になるという点に注意が必要かもしれません。
+
+\begin{commandline}
+IF_BRIDGE_FD=0
+METHOD=static
+MODE=start
+LOGICAL=br0
+IF_IP2_GATEWAY=192.168.253.1
+PHASE=pre-up
+IF_BRIDGE_MAXWAIT=0
+IF_ADDRESS=192.168.253.29
+ADDRFAM=inet
+VERBOSITY=0
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+IF_IP2_NET=192.168.253.0/24
+IF_GATEWAY=192.168.253.1
+IF_METRIC=100
+IF_NETMASK=255.255.255.0
+IFACE=br0
+IF_BRIDGE_STP=off
+PWD=/
+IF_IP2_TABLE=100
+IF_BRIDGE_PORTS=eth0
+IF_BROADCAST=+
+IF_DNS_NAMESERVERS=192.168.253.1
+\end{commandline}
+
+\verb+IF_BRIDGE_+ で始まる環境変数は bridge-utils パッケージに含まれる
+/etc/network/if-post-down.d/bridge
+と
+/etc/network/if-pre-up.d/bridge
+使われます。
+
+\verb+IF_IP2_+ で始まる環境変数は次で説明する独自スクリプトで使っています。
+
+\subsubsection{独自スクリプトの例}
+
+独自スクリプトの例として以前作成したインターネットへの経路が複数ある環境での設定スクリプトを載せておきます。
+
+example では 192.168.0.2 側でも 192.168.1.2 側でも自宅サーバーを公開していて、リクエストが来た側のゲートウェイを経由して応答を返すように設定しています。
+
+\begin{commandline}
+ % cat /etc/network/ip2-route.sh
+ #!/bin/sh
+ #
+ # example:
+ #
+ #auto eth0
+ #iface eth0 inet static
+ #       address 192.168.0.2
+ #       netmask 255.255.255.0
+ #       gateway 192.168.0.1
+ #       ip2-table 100
+ #       ip2-net 192.168.0.0/24
+ #       ip2-gateway 192.168.0.1
+ #       post-up /etc/network/ip2-route.sh
+ #       pre-down /etc/network/ip2-route.sh
+ #auto eth1
+ #iface eth1 inet static
+ #       address 192.168.1.2
+ #       netmask 255.255.255.0
+ #       ip2-table 101
+ #       ip2-net 192.168.1.0/24
+ #       ip2-gateway 192.168.1.1
+ #       post-up /etc/network/ip2-route.sh
+ #       pre-down /etc/network/ip2-route.sh
+ #
+ 
+ [ -n "$IF_IP2_NET" ] || exit 0
+ [ -n "$IF_IP2_TABLE" ] || exit 0
+ [ -n "$IF_IP2_GATEWAY" ] || exit 0
+ 
+ if [ "$VERBOSITY" -eq 1 ]; then
+         set -x
+ fi
+ case "$PHASE" in
+         *up)
+                 ip route add $IF_IP2_NET dev $IFACE src $IF_ADDRESS table $IF_IP2_TABLE
+                 ip route add default via $IF_IP2_GATEWAY table $IF_IP2_TABLE
+                 ip rule add from $IF_ADDRESS table $IF_IP2_TABLE
+         ;;
+         *down)
+                 ip rule del from $IF_ADDRESS table $IF_IP2_TABLE
+                 ip route del default via $IF_IP2_GATEWAY table $IF_IP2_TABLE
+                 ip route del $IF_IP2_NET dev $IFACE src $IF_ADDRESS table $IF_IP2_TABLE
+         ;;
+ esac
+ 
+ exit 0
+\end{commandline}
+
+まず ip2-net, ip2-table, ip2-gateway のすべてを必須設定として、抜けがある場合は何もしないようにしています。
+
+次に VERBOSITY をチェックしています。
+ここでは ifup -v eth0 のように実行された時に後続のコマンドが実際にどういうコマンドラインで実行されるのかを表示するようにして、デバッグしやすくしています。
+
+最後に up か down かに応じて ip コマンドを実行しています。
+
+この設定ファイルを /etc/network/if-up.d/ と /etc/network/if-down.d/ の中にシンボリックリンクを作成しても良かったのですが、この例では /etc/network/ip2-route.sh に置いて、post-up と pre-down で実行するようにしています。
+スクリプトをどう設置するのかは管理しやすい方法を選べば良いと思います。
+
+スクリプトの説明はここまでです。
+次からは /etc/network/interfaces の設定の説明に戻ります。
+
+\subsection{inet アドレスファミリ}
+IPv4 のネットワーク設定です。
+
+\subsubsection{loopback メソッド}
+
+\begin{commandline}
+iface lo inet loopback
+\end{commandline}
+
+のことです。
+
+iptables の設定に iptables-restore を使っているのなら、
+
+\begin{commandline}
+ # The loopback network interface
+ auto lo
+ iface lo inet loopback
+   pre-up /sbin/iptables-restore < /etc/network/iptables.txt
+\end{commandline}
+
+のように lo の pre-up に設定しておけば他のインターフェイスが up される前に設定できていいかもしません。
+
+\subsubsection{static メソッド}
+
+address と netmask は必須です。
+
+broadcast と network は address と netmask から自動設定可能なので、わざわざ書いて間違える可能性を増やすよりも省略しておく方がおすすめだと思います。
+
+gateway も設定することが多いです。
+
+\subsubsection{manual メソッド}
+
+up や down などで全部自前で設定するときや 「/etc/network/if-*.d/」以下のスクリプトで設定する時などに使います。
+
+bonding の slave 用 NIC に NetworkManager などが余計なことをしないように「iface eth1 inet manual」だけ書いておくという使い方も可能です。
+
+\subsubsection{dhcp メソッド}
+
+dhclient などで dhcp クライアントとしてネットワークを設定します。
+
+\subsection{inet6 アドレスファミリ}
+IPv6 のネットワーク設定です。
+
+端末として接続するだけなら自動設定されることが多いので、わざわざ書くことは少ないかもしれません。
+ルーターやサーバーなどで固定 IP アドレスを付けたり、トンネルで接続する場合に書くことになります。
+接続方法によって設定内容が変わってくるので、詳細は省略します。
+
+\subsection{設定書き換え時の注意}
+
+ネットワーク接続中に /etc/network/interfaces を書き換えるのはあまりお勧めしません。
+
+ifdown のときにも /etc/network/interfaces を見て何をするかが決まっているので、dhcp を static に書き換えてから /etc/init.d/networking restart をしてしまうと、dhcp クライアントのプロセスが残ってしまって、いつの間にかIPアドレスが変わって悩む、という現象が起きることがあるので注意が必要です。
+たとえば他にも up で route add されていることを前提にして down に route del を書いていると、手動で up に書いた処理を実行しないと down の処理でエラーになるというような問題があります。
+
+安全な方法としては ifdown で停止した後で /etc/network/interfaces を書き換えて、 ifup するという手順になります。
+
+\subsection{参考文献}
+\begin{itemize}
+\item man interfaces で参照出来る interfaces(5) の man page
+\item resolvconf パッケージをインストールしている場合 man resolvconf で参照出来る resolvconf(8) の man page
+\item Debian リファレンスの 第5章 ネットワークの設定 http://www.debian.org/doc/manuals/debian-reference/ch05.ja.html
+\item http://wiki.debian.org/NetworkConfiguration
+\end{itemize}
+
+%\subsection{xxx}
+%
+%\begin{commandline}
+%コマンドラインとか。
+%% COLUMNS=400 dpkg -l | grep ^rc | awk '{print $2}' | xargs sudo aptitude purge -y
+%\end{commandline}
+%
+%
+%図 \ref{fig:image01} として画像を入れる場合。
+%\begin{figure}[ht!]
+%  \begin{center}
+%    \includegraphics[width=.5\hsize]{images/openlogo-nd.eps}
+%  \end{center}
+%  \caption{キャプション}
+%  \label{fig:image01}
+%\end{figure}
+%
+%フットノート\footnote{フットノートです。}
+%
+%\begin{itemize}
+%\item リスト1
+%\item リスト2
+%\end{itemize}
+%
+%
+%\begin{enumerate}
+%\item 番号付きリスト1
+%\item 番号付きリスト2
+%\end{enumerate}
+%
+%
+%\begin{description}
+%\item[定義1] 定義文1
+%\item[定義2] 定義文2
+%\end{description}
+%
+%\begin{table}[hb!]
+%  \centering
+%  \begin{tabular}{l|l}
+%    \hline
+%    表の中身1 & 表の中身2 \\
+%    \hline
+%    表の中身1 & 表の中身2 \\
+%    表の中身1 & 表の中身2 \\
+%    表の中身1 & 表の中身2 \\
+%    \hline
+%  \end{tabular}
+%  \caption{表とか.}
+%  \label{tab:table01}
+%\end{table}
+
+\end{document}
