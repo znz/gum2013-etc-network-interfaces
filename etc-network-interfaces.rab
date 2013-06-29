@@ -527,7 +527,7 @@ gateway も設定することが多いです。
 = manual メソッド
   * up や down などで全部自前で設定する時
   * 「/etc/network/if-*.d/」以下のスクリプトで設定する時
-  * NetworkManaer の余計な処理を止めたい時
+  * NetworkManager の余計な処理を止めたい時
 == Note
 up や down などで全部自前で設定するときや 「/etc/network/if-*.d/」以下のスクリプトで設定する時などに使います。
 
