@@ -1,8 +1,11 @@
 ---
 id: gum2013-etc-network-interfaces
 base_name: etc-network-interfaces
-tags: []
-presentation_date: 
+tags:
+  - debian
+  - network
+  - interfaces
+presentation_date: 2013/06/29
 version: 1.0.0
 licenses: []
 slideshare_id: 
