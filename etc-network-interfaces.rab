@@ -15,6 +15,18 @@
 : theme
    lightning-simple
 
+= Agenda
+
+  * /etc/network/interfaces とは?
+  * interfaces ファイルの構造
+  * stanza の種類
+
+= Agenda
+
+  * ((*/etc/network/interfaces とは?*))
+  * interfaces ファイルの構造
+  * stanza の種類
+
 = /etc/network/interfaces とは?
 ネットワークの設定ファイル
 
@@ -52,6 +64,12 @@ Debian 系では /etc/network/interfaces がネットワークの設定ファイ
 
 == Note
 resolvconf や wireless-tools や wpasupplicant などは後述する /etc/network/if-*.d/ の仕組みを使っているので、 /etc/network/interfaces ファイルを直接参照することはありません。
+
+= Agenda
+
+  * /etc/network/interfaces とは?
+  * ((*interfaces ファイルの構造*))
+  * stanza の種類
 
 = interfaces ファイルの構造
  # lo の auto stanza と iface stanza
@@ -538,4 +556,3 @@ ifdown のときにも /etc/network/interfaces を見て何をするかが決ま
 たとえば他にも up で route add されていることを前提にして down に route del を書いていると、手動で up に書いた処理を実行しないと down の処理でエラーになるというような問題があります。
 
 安全な方法としては ifdown で停止した後で /etc/network/interfaces を書き換えて、 ifup するという手順になります。
-
