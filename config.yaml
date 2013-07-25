@@ -1,5 +1,5 @@
 ---
-id: gum2013-etc-network-interfaces
+id: gum2013
 base_name: etc-network-interfaces
 tags:
   - debian
